@@ -4,6 +4,7 @@ import re
 
 import db
 import dialog
+import BM_Match
 
 import csv
 import sys
@@ -13,16 +14,16 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow,
                              QHeaderView, QComboBox, QFileDialog, QToolTip, QMessageBox, QLineEdit)
 from PyQt5.QtGui import QIcon
 
-from BM_Match import search
-
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         db.create_table()
-        self.init_ui()
         self.unsaved_changes = False
         self.modified_rows = set()
+        self.rows = []
+        self.load_db_data()
+        self.init_ui()
 
     def init_ui(self):
         self.setWindowTitle("Petaluma Music School Mailing List")
@@ -53,7 +54,7 @@ class MainWindow(QMainWindow):
 
         self.filter_button = QComboBox()
         self.filter_button.addItems(["Filter", "AM", "PM"])
-        self.filter_button.currentTextChanged.connect(self.load_table)
+        self.filter_button.currentTextChanged.connect(self.render_table)
         button_layout.addWidget(self.filter_button)
 
 
@@ -94,7 +95,7 @@ class MainWindow(QMainWindow):
         self.table.itemChanged.connect(self.item_changed)
 
         main_layout.addWidget(self.table)
-        self.load_table(self.filter_button.currentText())
+        self.render_table(self.filter_button.currentText())
 
 
     #opens window to import customer data from Google Contacts csv
@@ -121,7 +122,7 @@ class MainWindow(QMainWindow):
         dlg = dialog.ImportCustomers(len(data))
         if dlg.exec_() == QDialog.Accepted:
             db.import_customers(data, dlg.morning_entry.isChecked(), dlg.evening_entry.isChecked())
-            self.load_table(self.filter_button.currentText())
+            self.render_table(self.filter_button.currentText())
 
 
     #opens a window and prompts to enter data
@@ -134,7 +135,8 @@ class MainWindow(QMainWindow):
             morning = dlg.morning_entry.isChecked()
             evening = dlg.evening_entry.isChecked()
             db.add_customer(first_name, last_name, email, morning, evening)
-            self.load_table(self.filter_button.currentText())
+            self.render_table(self.filter_button.currentText())
+
 
     #confirmation window for customer deletion
     def delete_customer_dialog(self):
@@ -152,14 +154,15 @@ class MainWindow(QMainWindow):
         dlg = dialog.DeleteCustomer(id_remove)
         if dlg.exec_() == QDialog.Accepted:
             db.remove_customer(id_remove)
-            self.load_table(self.filter_button.currentText())
+            self.render_table(self.filter_button.currentText())
+
 
     #confirmation window for dropping character db
     def drop_table_dialog(self):
         dlg = dialog.DropTable()
         if dlg.exec_() == QDialog.Accepted:
             db.drop_table()
-            self.load_table(self.filter_button.currentText())
+            self.render_table(self.filter_button.currentText())
 
 
     #copies to clipboard emails from the QTableWidget
@@ -169,18 +172,20 @@ class MainWindow(QMainWindow):
         selected_emails = []
         all_emails = []
         for i in range(self.table.rowCount()):
-            if self.table.cellWidget(i,0).isChecked():
-                selected_emails.append(self.table.item(i,3).text())
-            all_emails.append(self.table.item(i,3).text())
+            if not self.table.isRowHidden(i):
+                if self.table.cellWidget(i, 0).isChecked():
+                    selected_emails.append(self.table.item(i, 3).text())
+                all_emails.append(self.table.item(i, 3).text())
 
         if selected_emails:
             QApplication.clipboard().setText(", ".join(selected_emails))
-            print("Copying selected emails")
+            # print("Copying selected emails")
         else:
             QApplication.clipboard().setText(", ".join(all_emails))
-            print("Copying all emails")
+            # print("Copying all emails")
         QToolTip.showText(self.copy_emails_button.mapToGlobal(self.copy_emails_button.rect().center()),
                           "Emails copied to clipboard")
+
 
     #marks modified rows for saving
     def item_changed(self, e):
@@ -190,10 +195,12 @@ class MainWindow(QMainWindow):
         # print(f"row: {row}, c_id: {c_id}")
         self.modified_rows.add(c_id)
 
+
     #updates the db to reflect changes made on the QTable
     def save_changes(self, close=False):
         skipped = 0
-        for i in range(self.table.rowCount()):
+
+        for i in range(len(self.rows)):
             c_id = self.table.cellWidget(i, 0).property("ID")
             if c_id not in self.modified_rows:
                 continue
@@ -206,21 +213,26 @@ class MainWindow(QMainWindow):
             updated_am = self.table.cellWidget(i,4).isChecked()
             updated_pm = self.table.cellWidget(i,5).isChecked()
             db.update_customer(c_id, updated_first_name, updated_last_name, updated_email, updated_am, updated_pm)
-        if not close: self.load_table(self.filter_button.currentText())
+
+        if not close: self.render_table(self.filter_button.currentText())
         self.unsaved_changes = False
         msg = f"Changes saved ({skipped} invalid emails skipped)" if skipped else "Changes Saved"
         QToolTip.showText(self.save_button.mapToGlobal(self.save_button.rect().center()),
                           msg)
+        self.load_db_data()
+        self.render_table(self.filter_button.currentText())
+
 
     #uses boyer-moore pattern matching to find entries whose cells contain the search
     #hides all rows that do not match
     def search(self, query):
         if not query:
-            self.load_table(self.filter_button.currentText())
+            self.render_table(self.filter_button.currentText())
         for i in range(self.table.rowCount()):
             row_contents = self.row_text(i)
-            if not search(row_contents, query):
+            if not BM_Match.search(row_contents, query):
                 self.table.setRowHidden(i, True)
+
 
     #helper function for search
     #returns concatenation of name and email columns of a given row
@@ -231,49 +243,20 @@ class MainWindow(QMainWindow):
             text += self.table.item(row, i).text().lower()
         return text
 
-    # #renders db data into QTableWidget
-    # def load_table(self, e=None):
-    #     self.table.blockSignals(True)
-    #     self.table.setRowCount(0)
-    #
-    #     rows = db.get_customers(e)
-    #
-    #     if rows:
-    #         for data in rows:
-    #             row = self.table.rowCount()
-    #             self.table.insertRow(row)
-    #             checkbox_style = "margin-left: auto; margin-right: auto;"
-    #             select_checkbox = QCheckBox()
-    #             select_checkbox.setStyleSheet(checkbox_style)
-    #             select_checkbox.setProperty("ID", data[0])  #customer ID is hidden as a property of the select checkbox
-    #             self.table.setCellWidget(row, 0, select_checkbox)
-    #             self.table.setItem(row, 1, QTableWidgetItem(data[1]))
-    #             self.table.setItem(row, 2, QTableWidgetItem(data[2]))
-    #             self.table.setItem(row, 3, QTableWidgetItem(data[3]))
-    #             am_checkbox = QCheckBox(self)
-    #             am_checkbox.setChecked(data[4])
-    #             am_checkbox.setStyleSheet(checkbox_style)
-    #             self.table.setCellWidget(row, 4, am_checkbox)
-    #             pm_checkbox = QCheckBox(self)
-    #             pm_checkbox.setChecked(data[5])
-    #             pm_checkbox.setStyleSheet(checkbox_style)
-    #             self.table.setCellWidget(row, 5, pm_checkbox)
-    #
-    #             am_checkbox.stateChanged.connect(lambda _: self.modified_rows.add(data[0]))
-    #             pm_checkbox.stateChanged.connect(lambda _: self.modified_rows.add(data[0]))
-    #
-    #     self.table.blockSignals(False)
-
 
     #loads db data into QTableWidget
-    def load_table(self):
+    def load_db_data(self):
+        self.rows = db.get_customers()
+
+
+    #displays data loaded on table
+    #accepts optional filter parameters
+    def render_table(self, e=None):
         self.table.blockSignals(True)
         self.table.setRowCount(0)
 
-        rows = db.get_customers()
-
-        if rows:
-            for data in rows:
+        if self.rows:
+            for data in self.rows:
                 row = self.table.rowCount()
                 self.table.insertRow(row)
                 checkbox_style = "margin-left: auto; margin-right: auto;"
@@ -293,8 +276,15 @@ class MainWindow(QMainWindow):
                 pm_checkbox.setStyleSheet(checkbox_style)
                 self.table.setCellWidget(row, 5, pm_checkbox)
 
-                am_checkbox.stateChanged.connect(lambda _: self.modified_rows.add(data[0]))
-                pm_checkbox.stateChanged.connect(lambda _: self.modified_rows.add(data[0]))
+                am_checkbox.stateChanged.connect(lambda _, c_id=data[0]: self.modified_rows.add(c_id))
+                pm_checkbox.stateChanged.connect(lambda _, c_id=data[0]: self.modified_rows.add(c_id))
+
+                if e == "AM":
+                    self.table.setRowHidden(row, not am_checkbox.isChecked())
+                elif e == "PM":
+                    self.table.setRowHidden(row, not pm_checkbox.isChecked())
+                else:
+                    self.table.setRowHidden(row, False)
 
         self.table.blockSignals(False)
 
