@@ -214,8 +214,9 @@ class MainWindow(QMainWindow):
             updated_pm = self.table.cellWidget(i,5).isChecked()
             db.update_customer(c_id, updated_first_name, updated_last_name, updated_email, updated_am, updated_pm)
 
-        if not close: self.render_table(self.filter_button.currentText())
         self.unsaved_changes = False
+        if close:
+            return
         msg = f"Changes saved ({skipped} invalid emails skipped)" if skipped else "Changes Saved"
         QToolTip.showText(self.save_button.mapToGlobal(self.save_button.rect().center()),
                           msg)
@@ -276,8 +277,8 @@ class MainWindow(QMainWindow):
                 pm_checkbox.setStyleSheet(checkbox_style)
                 self.table.setCellWidget(row, 5, pm_checkbox)
 
-                am_checkbox.stateChanged.connect(lambda _, c_id=data[0]: self.modified_rows.add(c_id))
-                pm_checkbox.stateChanged.connect(lambda _, c_id=data[0]: self.modified_rows.add(c_id))
+                am_checkbox.stateChanged.connect(lambda _, c_id=data[0]: (self.modified_rows.add(c_id), setattr(self, 'unsaved_changes', True)))
+                pm_checkbox.stateChanged.connect(lambda _, c_id=data[0]: (self.modified_rows.add(c_id), setattr(self, 'unsaved_changes', True)))
 
                 if e == "AM":
                     self.table.setRowHidden(row, not am_checkbox.isChecked())
