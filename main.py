@@ -1,6 +1,7 @@
 #main ui and driver code for music school mailing list
 import os
 import re
+from gc import enable
 
 import db
 import dialog
@@ -122,6 +123,7 @@ class MainWindow(QMainWindow):
         dlg = dialog.ImportCustomers(len(data))
         if dlg.exec_() == QDialog.Accepted:
             db.import_customers(data, dlg.morning_entry.isChecked(), dlg.evening_entry.isChecked())
+            self.load_db_data()
             self.render_table(self.filter_button.currentText())
 
 
@@ -135,6 +137,7 @@ class MainWindow(QMainWindow):
             morning = dlg.morning_entry.isChecked()
             evening = dlg.evening_entry.isChecked()
             db.add_customer(first_name, last_name, email, morning, evening)
+            self.load_db_data()
             self.render_table(self.filter_button.currentText())
 
 
@@ -146,7 +149,7 @@ class MainWindow(QMainWindow):
             cur_row = self.table.cellWidget(x, 0)
             if cur_row.isChecked():
                 id_remove.append(cur_row.property("ID"))
-            # print(id_remove)
+            print(id_remove)
 
         if not id_remove:
             return
@@ -154,6 +157,7 @@ class MainWindow(QMainWindow):
         dlg = dialog.DeleteCustomer(id_remove)
         if dlg.exec_() == QDialog.Accepted:
             db.remove_customer(id_remove)
+            self.load_db_data()
             self.render_table(self.filter_button.currentText())
 
 
@@ -255,6 +259,7 @@ class MainWindow(QMainWindow):
     def render_table(self, e=None):
         self.table.blockSignals(True)
         self.table.setRowCount(0)
+        self.table.setSortingEnabled(True)
 
         if self.rows:
             for data in self.rows:
