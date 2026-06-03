@@ -15,6 +15,8 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow,
                              QHeaderView, QComboBox, QFileDialog, QToolTip, QMessageBox, QLineEdit)
 from PyQt5.QtGui import QIcon
 
+from BM_Match import search
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -231,12 +233,12 @@ class MainWindow(QMainWindow):
     #uses boyer-moore pattern matching to find entries whose cells contain the search
     #hides all rows that do not match
     def search(self, query):
-        if not query:
-            self.render_table(self.filter_button.currentText())
         for i in range(self.table.rowCount()):
             row_contents = self.row_text(i)
-            if not BM_Match.search(row_contents, query):
+            if not BM_Match.search(row_contents, query.lower()):
                 self.table.setRowHidden(i, True)
+            else:
+                self.table.setRowHidden(i, False)
 
 
     #helper function for search
@@ -244,7 +246,7 @@ class MainWindow(QMainWindow):
     #ignores case
     def row_text(self, row):
         text = ""
-        for i in range(1, 3):
+        for i in range(1, 4):
             text += self.table.item(row, i).text().lower()
         return text
 
