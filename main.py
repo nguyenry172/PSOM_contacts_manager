@@ -235,7 +235,7 @@ class MainWindow(QMainWindow):
             self.render_table(self.filter_button.currentText())
         for i in range(self.table.rowCount()):
             row_contents = self.row_text(i)
-            if not BM_Match.search(row_contents, query):
+            if not BM_Match.search(row_contents, query.lower()):
                 self.table.setRowHidden(i, True)
 
 
@@ -244,7 +244,7 @@ class MainWindow(QMainWindow):
     #ignores case
     def row_text(self, row):
         text = ""
-        for i in range(1, 3):
+        for i in range(1, 4):
             text += self.table.item(row, i).text().lower()
         return text
 
